@@ -3,6 +3,7 @@ const dashboard = document.getElementById('dashboard');
 
 function initDashboard() 
 {
+    if (!dashboard) return;
     for (let i = 1; i <= totalMachines; i++) 
     {
         const card = document.createElement('div');
@@ -41,7 +42,6 @@ async function fetchMachineData()
 {
     try 
     {
-       
         const response = await fetch('http://RASPBERRY_PI_IP/api/machines');  // from Abo Ali
         
         if (!response.ok) throw new Error('Network response was not ok');
@@ -56,18 +56,43 @@ async function fetchMachineData()
 
 function updateDashboard(data) 
 {
+    if (!Array.isArray(data)) return;
+
     data.forEach(machine => 
     {
+        if (!machine || typeof machine.id === 'undefined') return;
         const id = machine.id;
         
         const statusElement = document.getElementById(`status-m${id}`);
-        statusElement.textContent = machine.state;
-        statusElement.className = 'm-status ' + (machine.state === 'RUNNING' ? 'status-running' : 'status-stopped');
+        if (statusElement && machine.state) 
+        {
+            statusElement.textContent = machine.state;
+            statusElement.className = 'm-status ' + (machine.state === 'RUNNING' ? 'status-running' : 'status-stopped');
+        }
 
-        document.getElementById(`temp-m${id}`).textContent = `${machine.temperature} °C`;
-        document.getElementById(`vib-m${id}`).textContent = `${machine.vibration} Hz`;
-        document.getElementById(`speed-m${id}`).textContent = `${machine.speed} RPM`;
-        document.getElementById(`prox-m${id}`).textContent = `${machine.proximity} mm`;
+        const tempElement = document.getElementById(`temp-m${id}`);
+        if (tempElement && machine.temperature !== undefined) 
+        {
+            tempElement.textContent = `${machine.temperature} °C`;
+        }
+
+        const vibElement = document.getElementById(`vib-m${id}`);
+        if (vibElement && machine.vibration !== undefined) 
+        {
+            vibElement.textContent = `${machine.vibration} Hz`;
+        }
+
+        const speedElement = document.getElementById(`speed-m${id}`);
+        if (speedElement && machine.speed !== undefined) 
+        {
+            speedElement.textContent = `${machine.speed} RPM`;
+        }
+
+        const proxElement = document.getElementById(`prox-m${id}`);
+        if (proxElement && machine.proximity !== undefined) 
+        {
+            proxElement.textContent = `${machine.proximity} mm`;
+        }
     });
 }
 
