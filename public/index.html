@@ -3,21 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Industrial IoT Dashboard</title>
+    <title>Industrial IoT Dashboard | Smart Factory</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="dashboard-container" id="dashboard">
-    </div>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                        <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                        <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                    </svg>
+                </div>
+                <div>
+                    <div class="brand-name">IoT Nexa</div>
+                </div>
+                <span class="brand-tag">SIC IoT</span>
+            </a>
+
+            <div class="nav-status">
+                <span class="status-dot"></span>
+                <span id="telemetry-status">Live Telemetry</span>
+            </div>
+
+            <ul class="nav-menu">
+                <li><a href="index.html" class="nav-link active">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="9"></rect>
+                        <rect x="14" y="3" width="7" height="5"></rect>
+                        <rect x="14" y="12" width="7" height="9"></rect>
+                        <rect x="3" y="16" width="7" height="5"></rect>
+                    </svg>
+                    Dashboard
+                </a></li>
+                <li><a href="about.html" class="nav-link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    About Us
+                </a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-wrapper">
+        <!-- Hero Header with Live Stats -->
+        <section class="hero-header">
+            <div class="hero-title-group">
+                <h1>Smart Factory Telemetry</h1>
+                <p>Real-time edge sensor streaming & automated actuator safety monitoring</p>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Active Units</span>
+                    <span class="stat-value" id="stat-active-units">5 / 5 Online</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">MQTT Broker</span>
+                    <span class="stat-value">broker.hivemq.com</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Refresh Rate</span>
+                    <span class="stat-value">2000 ms</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Machine Cards Container -->
+        <section class="dashboard-container" id="dashboard">
+            <!-- Dynamically populated by miniproj.js -->
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-text">
+                &copy; 2026 SIC Mini Project. All rights reserved.
+            </div>
+            <div class="footer-credits">
+                Made with ❤️ by 
+                <a href="about.html">Our Team</a> &bull;
+                <a href="https://www.linkedin.com/in/karim-khaled-b17170329/" target="_blank" rel="noopener noreferrer">
+                    Karim Khaled Ismail
+                </a>
+            </div>
+        </div>
+    </footer>
 
     <script src="miniproj.js"></script>
-
-    <footer>
-        <p>Made With ❤️ By 
-            <a href="https://www.linkedin.com/in/karim-khaled-b17170329/" target="_blank" rel="noopener noreferrer">
-                Karim Khaled Ismail
-            </a>
-        </p>
-    </footer>
 </body>
 </html>
