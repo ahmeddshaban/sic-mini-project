@@ -106,3 +106,8 @@ ehthumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# AI Agent Artifacts
+.agents/
+skills-lock.json
+
