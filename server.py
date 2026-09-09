@@ -6,7 +6,7 @@ PORT = 1883
 Sensor_TOPIC = "factory/sensors/data"
 COMMAND_TOPIC = "factory/actuators/control"
 
-def on_connect(client, userdata, flags):
+def on_connect(client, userdata, flags, reason_code, properties=None):
     print(f"Server Connected to broker.")
     client.subscribe(Sensor_TOPIC)
 
@@ -38,7 +38,7 @@ def on_message(client, userdata, msg):
     except Exception:
         print(f"Server error")
 
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect
 client.on_message = on_message
 
