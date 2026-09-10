@@ -35,7 +35,7 @@ HTTP_HOST = "0.0.0.0"
 HTTP_PORT = 8080
 
 # --- Blynk IoT Configuration ---
-BLYNK_AUTH_TOKEN = "T-fb4daKcYs7NpEU91Ur6-zt26uc-_P3"
+BLYNK_AUTH_TOKEN = "vwxq7XgWR0BHbd-JSokS_FSuhh6XHp1o"
 BLYNK_BASE_URL = "https://blynk.cloud/external/api"
 
 VPIN_TEMPERATURE = "v0"
