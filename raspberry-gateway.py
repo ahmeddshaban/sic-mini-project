@@ -180,20 +180,53 @@ def handle_tcp_machine(conn, addr):
 
 
 def send_control_command(machine_id, command, value=None):
-    """Dispatches command to a machine over its live TCP connection."""
+    """Dispatches command to a machine and updates local state optimistically."""
+    cmd = command.upper()
     with state_lock:
+        if machine_id in machines_state:
+            if cmd == "START":
+                machines_state[machine_id]["state"] = "RUNNING"
+                machines_state[machine_id]["motor_state"] = "RUNNING"
+                machines_state[machine_id]["valve_state"] = "OPEN"
+                if machines_state[machine_id].get("motor_speed", 0) <= 0:
+                    machines_state[machine_id]["motor_speed"] = 1500
+            elif cmd == "STOP":
+                machines_state[machine_id]["state"] = "STOPPED"
+                machines_state[machine_id]["motor_state"] = "STOPPED"
+                machines_state[machine_id]["motor_speed"] = 0
+                machines_state[machine_id]["valve_state"] = "CLOSED"
+            elif cmd == "RESET":
+                machines_state[machine_id]["state"] = "STOPPED"
+                machines_state[machine_id]["motor_state"] = "STOPPED"
+                machines_state[machine_id]["motor_speed"] = 0
+                machines_state[machine_id]["valve_state"] = "CLOSED"
+                machines_state[machine_id]["alerts"] = []
+            elif cmd == "SET_SPEED":
+                try:
+                    spd = int(value) if value is not None else 1500
+                    machines_state[machine_id]["motor_speed"] = max(0, min(2400, spd))
+                    if spd > 0:
+                        machines_state[machine_id]["state"] = "RUNNING"
+                        machines_state[machine_id]["motor_state"] = "RUNNING"
+                        machines_state[machine_id]["valve_state"] = "OPEN"
+                    else:
+                        machines_state[machine_id]["state"] = "STOPPED"
+                        machines_state[machine_id]["motor_state"] = "STOPPED"
+                        machines_state[machine_id]["valve_state"] = "CLOSED"
+                except Exception:
+                    pass
         conn = tcp_connections.get(machine_id)
-    if conn is None:
-        print(f"[TCP Gateway] Machine {machine_id} is not connected via TCP")
-        return False
-    try:
-        msg = json.dumps({"command": command, "value": value}) + "\n"
-        conn.sendall(msg.encode("utf-8"))
-        print(f"[TCP Gateway] Sent {command} (val={value}) to machine {machine_id}")
-        return True
-    except Exception as err:
-        print(f"[TCP Gateway] Send error: {err}")
-        return False
+
+    if conn is not None:
+        try:
+            msg = json.dumps({"command": cmd, "value": value}) + "\n"
+            conn.sendall(msg.encode("utf-8"))
+            print(f"[TCP Gateway] Sent {cmd} (val={value}) to machine {machine_id}")
+        except Exception as err:
+            print(f"[TCP Gateway] Send error: {err}")
+    else:
+        print(f"[TCP Gateway] Machine {machine_id} command {cmd} applied locally")
+    return True
 
 
 def run_tcp_server():
@@ -261,7 +294,7 @@ def run_blynk_sync_worker():
     print("[Blynk Gateway] REST synchronization worker started.")
 
     while True:
-        time.sleep(1.0)
+        time.sleep(0.5)
         try:
             with state_lock:
                 mid = blynk_active_machine
@@ -276,7 +309,7 @@ def run_blynk_sync_worker():
             speed = machine.get("motor_speed", 0)
             m_state = machine.get("state", "STOPPED")
 
-            # 1. Update Telemetry: V0, V1, V2, V3
+            # 1. Update Telemetry: V0, V1, V2, V3 using batch/update
             params = urllib.parse.urlencode({
                 "token": BLYNK_AUTH_TOKEN,
                 VPIN_TEMPERATURE: f"{temp:.1f}",
@@ -284,29 +317,29 @@ def run_blynk_sync_worker():
                 VPIN_PROXIMITY: str(prox),
                 VPIN_MOTOR_SPEED: str(int(speed)),
             })
-            update_url = f"{BLYNK_BASE_URL}/update?{params}"
+            update_url = f"{BLYNK_BASE_URL}/batch/update?{params}"
             blynk_http_get(update_url)
 
             # 2. Poll V4 (Start/Stop Command from Blynk Dashboard)
             v4_query_url = f"{BLYNK_BASE_URL}/get?token={BLYNK_AUTH_TOKEN}&{VPIN_START_STOP}"
             v4_val = blynk_http_get(v4_query_url)
 
-            if v4_val is not None and v4_val != "":
+            if v4_val is not None and v4_val in ["0", "1"]:
                 if last_blynk_v4_val is None:
-                    # Initial synchronization
+                    # Initial synchronization: record current cloud state
                     last_blynk_v4_val = v4_val
                 elif v4_val != last_blynk_v4_val:
                     print(f"[Blynk Gateway] V4 button changed to {v4_val} on Blynk App!")
                     last_blynk_v4_val = v4_val
                     cmd = "START" if v4_val == "1" else "STOP"
                     send_control_command(mid, cmd)
-
-            # 3. If machine state changed locally, reflect back to V4
-            expected_v4 = "1" if m_state == "RUNNING" else "0"
-            if last_blynk_v4_val != expected_v4 and last_blynk_v4_val is not None:
-                sync_v4_url = f"{BLYNK_BASE_URL}/update?token={BLYNK_AUTH_TOKEN}&{VPIN_START_STOP}={expected_v4}"
-                blynk_http_get(sync_v4_url)
-                last_blynk_v4_val = expected_v4
+                else:
+                    # Cloud hasn't changed; if local state changed, update cloud
+                    expected_v4 = "1" if m_state == "RUNNING" else "0"
+                    if last_blynk_v4_val != expected_v4:
+                        sync_v4_url = f"{BLYNK_BASE_URL}/update?token={BLYNK_AUTH_TOKEN}&{VPIN_START_STOP}={expected_v4}"
+                        blynk_http_get(sync_v4_url)
+                        last_blynk_v4_val = expected_v4
 
         except Exception as err:
             pass
@@ -322,18 +355,23 @@ app = Flask(__name__, static_folder="public", template_folder="public")
 def add_cors_headers(response):
     """Enables CORS for production frontend (https://iotnexa-sic.web.app) and local access."""
     origin = request.headers.get("Origin")
-    # Allow all origins or specifically allow production dashboard
     response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Access-Control-Request-Private-Network"
     response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
     return response
 
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>", methods=["OPTIONS"])
 def handle_options(path):
-    return "", 204
+    response = app.make_response(("", 204))
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Access-Control-Request-Private-Network"
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 
 @app.route("/")

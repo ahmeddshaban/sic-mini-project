@@ -81,6 +81,7 @@ class SimulatedMachine(threading.Thread):
             self.state = "RUNNING"
             if self.target_speed == 0:
                 self.target_speed = 1500
+            self.motor_speed = self.target_speed
             self.valve_state = "OPEN"
             self.fault = None
         elif cmd == "STOP":
@@ -100,9 +101,13 @@ class SimulatedMachine(threading.Thread):
             try:
                 new_speed = int(val) if val is not None else 1500
                 self.target_speed = max(0, min(2400, new_speed))
-                if self.state == "STOPPED" and self.target_speed > 0:
+                self.motor_speed = self.target_speed
+                if self.target_speed > 0:
                     self.state = "RUNNING"
                     self.valve_state = "OPEN"
+                else:
+                    self.state = "STOPPED"
+                    self.valve_state = "CLOSED"
             except (ValueError, TypeError):
                 pass
         elif cmd == "TRIGGER_FAULT":
@@ -113,6 +118,24 @@ class SimulatedMachine(threading.Thread):
             elif fault_type == "VIB_HIGH":
                 self.vibration = 95.0
             self.trigger_alert(fault_type)
+
+        # Publish immediate telemetry on command update
+        try:
+            telemetry = {
+                "machine_id": self.machine_id,
+                "temperature": round(self.temperature, 1),
+                "vibration": round(self.vibration, 1),
+                "proximity": self.proximity,
+                "motor_state": self.state,
+                "motor_speed": int(self.motor_speed),
+                "valve_state": self.valve_state,
+                "state": self.state,
+                "fault": self.fault,
+                "timestamp": time.time(),
+            }
+            self.mqtt_client.publish(f"{TOPIC_BASE}/{self.machine_id}/telemetry", json.dumps(telemetry))
+        except Exception:
+            pass
 
         ack = {
             "status": "ACK",

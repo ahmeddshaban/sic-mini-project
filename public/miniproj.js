@@ -303,6 +303,55 @@ async function fetchMachineData() {
 
 // --- Command Dispatch via Gateway TCP REST API ---
 async function sendCommand(machineId, command, value = null) {
+    const statusElement = document.getElementById(`status-m${machineId}`);
+    const valveEl = document.getElementById(`valve-m${machineId}`);
+    const speedElement = document.getElementById(`speed-m${machineId}`);
+    const meterSpeed = document.getElementById(`meter-speed-m${machineId}`);
+    const sliderEl = document.getElementById(`slider-m${machineId}`);
+    const previewEl = document.getElementById(`speed-preview-m${machineId}`);
+
+    if (command === 'START') {
+        if (statusElement) {
+            statusElement.textContent = 'RUNNING';
+            statusElement.className = 'm-status status-running';
+        }
+        if (valveEl) {
+            valveEl.textContent = 'OPEN';
+            valveEl.className = 'valve-badge valve-open';
+        }
+        const spd = (sliderEl && parseInt(sliderEl.value, 10) > 0) ? parseInt(sliderEl.value, 10) : 1500;
+        if (speedElement) speedElement.textContent = `${spd} RPM`;
+        if (previewEl) previewEl.textContent = `${spd} RPM`;
+        if (sliderEl) sliderEl.value = spd;
+        if (meterSpeed) meterSpeed.style.width = `${Math.min(100, (spd / 2400) * 100)}%`;
+    } else if (command === 'STOP' || command === 'RESET') {
+        if (statusElement) {
+            statusElement.textContent = 'STOPPED';
+            statusElement.className = 'm-status status-stopped';
+        }
+        if (valveEl) {
+            valveEl.textContent = 'CLOSED';
+            valveEl.className = 'valve-badge valve-closed';
+        }
+        if (speedElement) speedElement.textContent = '0 RPM';
+        if (previewEl) previewEl.textContent = '0 RPM';
+        if (sliderEl) sliderEl.value = 0;
+        if (meterSpeed) meterSpeed.style.width = '0%';
+    } else if (command === 'SET_SPEED') {
+        const spd = parseInt(value, 10) || 0;
+        if (speedElement) speedElement.textContent = `${spd} RPM`;
+        if (previewEl) previewEl.textContent = `${spd} RPM`;
+        if (meterSpeed) meterSpeed.style.width = `${Math.min(100, (spd / 2400) * 100)}%`;
+        if (spd > 0 && statusElement) {
+            statusElement.textContent = 'RUNNING';
+            statusElement.className = 'm-status status-running';
+            if (valveEl) {
+                valveEl.textContent = 'OPEN';
+                valveEl.className = 'valve-badge valve-open';
+            }
+        }
+    }
+
     try {
         const response = await fetch(`${GATEWAY_URL}/api/command`, {
             method: 'POST',
@@ -318,15 +367,21 @@ async function sendCommand(machineId, command, value = null) {
         });
         const result = await response.json();
         console.log(`[Command ${command}] Machine ${machineId}:`, result);
-        setTimeout(fetchMachineData, 250);
+        setTimeout(fetchMachineData, 400);
     } catch (err) {
         console.error('Error sending command:', err);
-        alert(`Failed to send command to Gateway: ${err.message}`);
     }
 }
 
 function setMachineSpeed(machineId, speed) {
-    sendCommand(machineId, 'SET_SPEED', parseInt(speed, 10));
+    const spd = parseInt(speed, 10) || 0;
+    const previewEl = document.getElementById(`speed-preview-m${machineId}`);
+    const meterSpeed = document.getElementById(`meter-speed-m${machineId}`);
+    const speedElement = document.getElementById(`speed-m${machineId}`);
+    if (previewEl) previewEl.textContent = `${spd} RPM`;
+    if (speedElement) speedElement.textContent = `${spd} RPM`;
+    if (meterSpeed) meterSpeed.style.width = `${Math.min(100, (spd / 2400) * 100)}%`;
+    sendCommand(machineId, 'SET_SPEED', spd);
 }
 
 // --- Blynk Active Machine Selection ---
