@@ -80,6 +80,43 @@
             </div>
         </section>
 
+        <!-- Gateway Configuration & Live Status Toolbar -->
+        <div class="gateway-toolbar">
+            <div class="gateway-info">
+                <span class="status-dot" id="gw-status-dot" style="background:#10b981; box-shadow: 0 0 8px #10b981;"></span>
+                <span>Gateway Status: <strong id="gw-status-text" style="color:#f8fafc;">Connecting...</strong></span>
+                <span style="opacity: 0.5;">|</span>
+                <span>Blynk Sync: <strong id="blynk-sync-label" style="color:var(--cyan);">Machine 1 (V0-V4)</strong></span>
+            </div>
+            <div class="gateway-input-group">
+                <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">Gateway API:</span>
+                <input type="text" id="gw-url-input" class="gateway-input" value="http://localhost:8080" placeholder="http://localhost:8080" />
+                <button class="btn-sm btn-primary" id="gw-url-save-btn">Connect</button>
+            </div>
+        </div>
+
+        <!-- UDP Emergency Alerts Section -->
+        <section class="alerts-section" id="alerts-section">
+            <div class="alerts-header">
+                <div class="alerts-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>Emergency Alerts (UDP Port 7000)</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-sm" style="background: rgba(245, 158, 11, 0.15); color: #fcd34d; border-color: rgba(245, 158, 11, 0.3);" onclick="simulateFault(1, 'TEMP_HIGH')">⚡ Temp Alert</button>
+                    <button class="btn-sm" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);" onclick="simulateFault(2, 'VIB_HIGH')">⚡ Vib Alert</button>
+                    <button class="btn-sm" style="background: rgba(168, 85, 247, 0.15); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.3);" onclick="simulateFault(3, 'SENSOR_FAULT')">⚡ Sensor Fault</button>
+                </div>
+            </div>
+            <div class="alerts-feed" id="alerts-feed">
+                <span style="font-size: 12px; color: var(--text-dim); font-style: italic;">No active critical alerts. System nominal.</span>
+            </div>
+        </section>
+
         <!-- Machine Cards Container -->
         <section class="dashboard-container" id="dashboard">
             <!-- Dynamically populated by miniproj.js -->
