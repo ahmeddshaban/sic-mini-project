@@ -6,8 +6,8 @@ PORT = 1883
 Sensor_TOPIC = "factory/sensors/data"
 COMMAND_TOPIC = "factory/actuators/control"
 
-def on_connect(client, userdata, flags, reason_code, properties=None):
-    print(f"Server Connected to broker.")
+def on_connect(client, userdata, flags, reason_code=None, properties=None):
+    print("Server Connected to broker.")
     client.subscribe(Sensor_TOPIC)
 
 def send_control_command(client, device, action):
@@ -20,11 +20,16 @@ def on_message(client, userdata, msg):
         payload_str = msg.payload.decode('utf-8')
         sensors_list = json.loads(payload_str)
         
+        if isinstance(sensors_list, dict):
+            sensors_list = [sensors_list]
+        elif not isinstance(sensors_list, list):
+            return
+
         for sensor in sensors_list:
             name = sensor.get("name")
             value = sensor.get("value")
             
-            #High Vibration : Stop conveyor and close valve
+            # High Vibration : Stop conveyor and close valve
             if name == "vibration" and value > 70:
                 print(f"High vibration :({value})!")
                 send_control_command(client, "Conveyor", "OFF")
@@ -35,12 +40,21 @@ def on_message(client, userdata, msg):
                 send_control_command(client, "Conveyor", "ON")
                 send_control_command(client, "Valve", "OPEN")
 
-    except Exception:
-        print(f"Server error")
+    except Exception as e:
+        print(f"Server error: {e}")
 
-client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+try:
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+except AttributeError:
+    client = mqtt.Client()
+
 client.on_connect = on_connect
 client.on_message = on_message
 
 client.connect(BROKER, PORT, 60)
-client.loop_forever()
+
+try:
+    client.loop_forever()
+except KeyboardInterrupt:
+    print("\nStopping server...")
+    client.disconnect()
