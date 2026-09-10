@@ -32,3 +32,19 @@ To launch the factory simulation and gateway locally, execute the following comm
 1. Initialize the centralized gateway and API server:
 ```bash
 python server.py
+Boot up the machine simulators to begin telemetry transmission:
+
+Bash
+python sensor.py
+Engineering Team
+Designed, developed, and deployed by the SIC Mini Project Team:
+
+Ahmed Shaban Mohamed
+
+Karim Khaled Ismail
+
+Ahmed Ali
+
+Safwat Mahmoud
+
+© 2026 SIC Mini Project. All rights reserved.
