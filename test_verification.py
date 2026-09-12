@@ -40,6 +40,17 @@ def run_tests():
             assert len(data["machines"]) == 5
             print("  PASSED: /api/status returned 5 machines.")
 
+        # Test 1B: Test Gateway HTTP /api/health
+        print("\n[Test 1B] Testing /api/health endpoint...")
+        req = urllib.request.Request("http://127.0.0.1:8080/api/health")
+        with urllib.request.urlopen(req, timeout=5.0) as res:
+            assert res.status == 200
+            health_data = json.loads(res.read().decode())
+            assert health_data["status"] == "online"
+            assert "uptime_seconds" in health_data
+            assert health_data["total_machines"] == 5
+            print(f"  PASSED: /api/health returned online status (uptime: {health_data['uptime_seconds']}s).")
+
         # Test 2: CORS Headers validation for deployed site
         print("\n[Test 2] Testing CORS Headers for https://iotnexa-sic.web.app...")
         req = urllib.request.Request(

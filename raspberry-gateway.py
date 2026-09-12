@@ -10,6 +10,7 @@ Integrates:
 """
 
 import json
+import os
 import socket
 import threading
 import time
@@ -19,23 +20,24 @@ from flask import Flask, jsonify, request, send_from_directory
 import paho.mqtt.client as mqtt
 
 NUM_MACHINES = 5
+GATEWAY_START_TIME = time.time()
 
 # --- Network & Protocol Configuration ---
-MQTT_BROKER = "broker.hivemq.com"
-MQTT_PORT = 1883
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.hivemq.com")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
 TOPIC_TELEMETRY = "sic_factory/machine/+/telemetry"
 
-TCP_HOST = "0.0.0.0"
-TCP_PORT = 6000
+TCP_HOST = os.environ.get("TCP_HOST", "0.0.0.0")
+TCP_PORT = int(os.environ.get("TCP_PORT", 6000))
 
-UDP_HOST = "0.0.0.0"
-UDP_PORT = 7000
+UDP_HOST = os.environ.get("UDP_HOST", "0.0.0.0")
+UDP_PORT = int(os.environ.get("UDP_PORT", 7000))
 
-HTTP_HOST = "0.0.0.0"
-HTTP_PORT = 8080
+HTTP_HOST = os.environ.get("HTTP_HOST", os.environ.get("HOST", "0.0.0.0"))
+HTTP_PORT = int(os.environ.get("PORT", os.environ.get("HTTP_PORT", 8080)))
 
 # --- Blynk IoT Configuration ---
-BLYNK_AUTH_TOKEN = "vwxq7XgWR0BHbd-JSokS_FSuhh6XHp1o"
+BLYNK_AUTH_TOKEN = os.environ.get("BLYNK_AUTH_TOKEN", "vwxq7XgWR0BHbd-JSokS_FSuhh6XHp1o")
 BLYNK_BASE_URL = "https://blynk.cloud/external/api"
 
 VPIN_TEMPERATURE = "v0"
@@ -382,6 +384,23 @@ def serve_index():
 @app.route("/<path:path>")
 def serve_static(path):
     return send_from_directory("public", path)
+
+
+@app.route("/api/health", methods=["GET"])
+def api_health():
+    """Lightweight health check endpoint for frontend latency testing & failover probing."""
+    with state_lock:
+        uptime_sec = round(time.time() - GATEWAY_START_TIME, 1)
+        active_tcp = sum(1 for m in machines_state.values() if m.get("connected_tcp"))
+        return jsonify({
+            "status": "online",
+            "gateway": "SIC Industrial IoT Gateway",
+            "uptime_seconds": uptime_sec,
+            "total_machines": NUM_MACHINES,
+            "active_tcp": active_tcp,
+            "blynk_active_machine": blynk_active_machine,
+            "timestamp": time.time(),
+        })
 
 
 @app.route("/api/status", methods=["GET"])

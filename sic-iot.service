@@ -1,0 +1,62 @@
+# ====================================================================
+# Samsung Innovation Campus (SIC8) - Industrial IoT System
+# Systemd Service Unit for 24/7 Cloud Server Operation
+# ====================================================================
+#
+# QUICK INSTALLATION INSTRUCTIONS ON YOUR CLOUD SERVER (Ubuntu/Debian):
+#
+# 1. Copy this repository to your cloud server (e.g. /opt/sic-mini-project):
+#      git clone <your-repo-url> /opt/sic-mini-project
+#      cd /opt/sic-mini-project
+#      pip3 install flask paho-mqtt
+#
+# 2. Copy this service file into the systemd directory:
+#      sudo cp sic-iot.service /etc/systemd/system/sic-iot.service
+#      sudo systemctl daemon-reload
+#
+# 3. Enable and Start the 24/7 service:
+#      sudo systemctl enable sic-iot.service
+#      sudo systemctl start sic-iot.service
+#
+# 4. Check status & live logs:
+#      sudo systemctl status sic-iot.service
+#      sudo journalctl -u sic-iot.service -f
+#
+# 5. Firewall Configuration (UFW):
+#      sudo ufw allow 8080/tcp comment "IoT Dashboard and REST API"
+#      sudo ufw allow 6000/tcp comment "IoT TCP Control Server"
+#      sudo ufw allow 7000/udp comment "IoT UDP Alert Receiver"
+#      sudo ufw reload
+# ====================================================================
+
+[Unit]
+Description=SIC Industrial IoT 24/7 Gateway & Simulation Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Change 'root' to your server username (e.g. ubuntu) if preferred
+User=root
+# Set to your actual project directory on the cloud server
+WorkingDirectory=/opt/sic-mini-project
+# Use python3 on the server, or full path to virtualenv python
+ExecStart=/usr/bin/python3 /opt/sic-mini-project/run_system.py
+
+# 24/7 Continuous Operation & Auto-Recovery
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=10
+
+# Environment Settings
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=8080
+Environment=AUTO_RESTART=1
+
+# Systemd Journal Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -80,18 +80,48 @@
             </div>
         </section>
 
-        <!-- Gateway Configuration & Live Status Toolbar -->
+        <!-- Mixed Content Warning Banner (shown dynamically if browsing on HTTPS connecting to HTTP) -->
+        <div id="mixed-content-banner" class="mixed-content-banner" style="display: none;">
+            <div class="banner-content">
+                <span class="banner-icon">⚠️</span>
+                <div>
+                    <strong>Mixed-Content Browser Notice:</strong>
+                    <span>You are on HTTPS (<code id="page-origin-code">https://iotnexa-sic.web.app</code>). Modern browsers block insecure HTTP requests. For direct 24/7 cloud access, open your server directly:</span>
+                </div>
+            </div>
+            <div class="banner-actions">
+                <a id="direct-cloud-link" href="#" target="_blank" class="btn-sm btn-primary">🚀 Open Direct Cloud Dashboard</a>
+                <button id="dismiss-banner-btn" class="btn-sm btn-subtle" onclick="document.getElementById('mixed-content-banner').style.display='none'">✕ Dismiss</button>
+            </div>
+        </div>
+
+        <!-- 24/7 Cloud & Local Gateway Configuration Toolbar -->
         <div class="gateway-toolbar">
             <div class="gateway-info">
-                <span class="status-dot" id="gw-status-dot" style="background:#10b981; box-shadow: 0 0 8px #10b981;"></span>
-                <span>Gateway Status: <strong id="gw-status-text" style="color:#f8fafc;">Connecting...</strong></span>
-                <span style="opacity: 0.5;">|</span>
-                <span>Blynk Sync: <strong id="blynk-sync-label" style="color:var(--cyan);">Machine 1 (V0-V4)</strong></span>
+                <span class="status-dot" id="gw-status-dot"></span>
+                <div class="gw-status-group">
+                    <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">Connection:</span>
+                    <strong id="gw-status-text">Connecting...</strong>
+                </div>
+                <span class="endpoint-pill" id="active-endpoint-pill" title="Currently Active Gateway URL">http://localhost:8080</span>
+                <span class="latency-badge" id="gw-latency-badge" title="Roundtrip API Latency">-- ms</span>
+                <span style="opacity: 0.3;">|</span>
+                <span class="blynk-info">Blynk: <strong id="blynk-sync-label">Machine 1</strong></span>
             </div>
-            <div class="gateway-input-group">
-                <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">Gateway API:</span>
-                <input type="text" id="gw-url-input" class="gateway-input" value="http://localhost:8080" placeholder="http://localhost:8080" />
-                <button class="btn-sm btn-primary" id="gw-url-save-btn">Connect</button>
+
+            <!-- Mode Selector: Auto Failover | Cloud | Local -->
+            <div class="gateway-actions">
+                <div class="mode-btn-group" role="group" aria-label="Connection Mode">
+                    <button class="mode-btn active" id="mode-auto-btn" title="Try Cloud Server first; automatically failover to Localhost if unavailable">⚡ Auto (Cloud ➔ Local)</button>
+                    <button class="mode-btn" id="mode-cloud-btn" title="Connect only to Cloud Server">☁️ Cloud Only</button>
+                    <button class="mode-btn" id="mode-local-btn" title="Connect only to Localhost (Port 8080)">💻 Local Only</button>
+                </div>
+
+                <div class="gateway-input-group">
+                    <input type="text" id="cloud-url-input" class="gateway-input" placeholder="http://<CLOUD_IP>:8080 or https://..." title="Cloud Server Address" />
+                    <button class="btn-sm btn-primary" id="cloud-url-save-btn" title="Save and connect to this Cloud Server">Connect</button>
+                    <button class="btn-sm btn-subtle" id="test-ping-btn" title="Ping active connection">⚡ Test</button>
+                </div>
             </div>
         </div>
 

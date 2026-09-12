@@ -1,7 +1,10 @@
 /**
  * Samsung Innovation Campus (SIC8) - IoT Track
  * Smart Factory Telemetry & Interactive Control Dashboard
- * Works both locally (http://localhost:8080) and on deployed site (https://iotnexa-sic.web.app)
+ * Features:
+ *   - 24/7 Cloud Server primary connection with automatic Localhost fallback
+ *   - Live latency measurement & dynamic failover recovery
+ *   - Deployed site (https://iotnexa-sic.web.app) and direct cloud access support
  */
 
 const totalMachines = 5;
@@ -9,40 +12,206 @@ const dashboard = document.getElementById('dashboard');
 const telemetryStatusEl = document.getElementById('telemetry-status');
 const activeUnitsEl = document.getElementById('stat-active-units');
 const alertsFeedEl = document.getElementById('alerts-feed');
+
+// Gateway toolbar elements
 const gwStatusDot = document.getElementById('gw-status-dot');
 const gwStatusText = document.getElementById('gw-status-text');
+const activeEndpointPill = document.getElementById('active-endpoint-pill');
+const gwLatencyBadge = document.getElementById('gw-latency-badge');
 const blynkSyncLabel = document.getElementById('blynk-sync-label');
-const gwUrlInput = document.getElementById('gw-url-input');
-const gwUrlSaveBtn = document.getElementById('gw-url-save-btn');
 
-// --- Gateway URL Management ---
-function getGatewayBaseUrl() {
-    const saved = localStorage.getItem('sic_gateway_url');
-    if (saved) return saved.replace(/\/+$/, '');
-    // If running on localhost/127.0.0.1 directly served by Gateway
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+const modeAutoBtn = document.getElementById('mode-auto-btn');
+const modeCloudBtn = document.getElementById('mode-cloud-btn');
+const modeLocalBtn = document.getElementById('mode-local-btn');
+const cloudUrlInput = document.getElementById('cloud-url-input');
+const cloudUrlSaveBtn = document.getElementById('cloud-url-save-btn');
+const testPingBtn = document.getElementById('test-ping-btn');
+
+// --- Multi-Endpoint & 24/7 Cloud Failover Configuration ---
+const LOCAL_GATEWAY_URL = 'http://localhost:8080';
+
+function getInitialCloudUrl() {
+    // 1. URL Query Param: ?server=... or ?cloud=...
+    const params = new URLSearchParams(window.location.search);
+    const queryServer = params.get('server') || params.get('cloud');
+    if (queryServer) {
+        let clean = queryServer.trim().replace(/\/+$/, '');
+        if (!clean.startsWith('http://') && !clean.startsWith('https://')) clean = 'http://' + clean;
+        localStorage.setItem('sic_cloud_gateway_url', clean);
+        return clean;
+    }
+    // 2. Saved in localStorage
+    const saved = localStorage.getItem('sic_cloud_gateway_url') || localStorage.getItem('sic_gateway_url');
+    if (saved && !saved.includes('localhost') && !saved.includes('127.0.0.1')) {
+        return saved.trim().replace(/\/+$/, '');
+    }
+
+    // 3. If accessed directly on non-localhost/Firebase IP/domain (e.g. running on Cloud VPS)
+    const host = window.location.hostname;
+    if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('web.app') && !host.includes('firebaseapp.com')) {
         return window.location.origin;
     }
-    // Default fallback for deployed frontend (https://iotnexa-sic.web.app)
-    return 'http://localhost:8080';
+    return '';
 }
 
-let GATEWAY_URL = getGatewayBaseUrl();
-if (gwUrlInput) {
-    gwUrlInput.value = GATEWAY_URL;
+let CLOUD_GATEWAY_URL = getInitialCloudUrl();
+let connectionMode = localStorage.getItem('sic_conn_mode') || 'auto'; // 'auto' | 'cloud' | 'local'
+let activeGatewayUrl = (connectionMode === 'local' || !CLOUD_GATEWAY_URL) ? LOCAL_GATEWAY_URL : CLOUD_GATEWAY_URL;
+let activeSource = 'connecting'; // 'cloud' | 'local' | 'offline'
+let lastCloudProbeTime = 0;
+let isFetching = false;
+
+function updateModeButtonsUI() {
+    if (modeAutoBtn) modeAutoBtn.classList.toggle('active', connectionMode === 'auto');
+    if (modeCloudBtn) modeCloudBtn.classList.toggle('active', connectionMode === 'cloud');
+    if (modeLocalBtn) modeLocalBtn.classList.toggle('active', connectionMode === 'local');
 }
 
-if (gwUrlSaveBtn) {
-    gwUrlSaveBtn.addEventListener('click', () => {
-        let val = gwUrlInput.value.trim().replace(/\/+$/, '');
-        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+function setConnectionMode(mode) {
+    connectionMode = mode;
+    localStorage.setItem('sic_conn_mode', mode);
+    updateModeButtonsUI();
+    if (mode === 'local') {
+        activeGatewayUrl = LOCAL_GATEWAY_URL;
+        activeSource = 'local';
+    } else if (mode === 'cloud') {
+        activeGatewayUrl = CLOUD_GATEWAY_URL || LOCAL_GATEWAY_URL;
+        activeSource = 'cloud';
+    } else {
+        // Auto
+        activeGatewayUrl = CLOUD_GATEWAY_URL ? CLOUD_GATEWAY_URL : LOCAL_GATEWAY_URL;
+        activeSource = CLOUD_GATEWAY_URL ? 'cloud' : 'local';
+    }
+    fetchMachineData();
+}
+
+if (modeAutoBtn) modeAutoBtn.addEventListener('click', () => setConnectionMode('auto'));
+if (modeCloudBtn) modeCloudBtn.addEventListener('click', () => setConnectionMode('cloud'));
+if (modeLocalBtn) modeLocalBtn.addEventListener('click', () => setConnectionMode('local'));
+
+if (cloudUrlInput) {
+    cloudUrlInput.value = CLOUD_GATEWAY_URL;
+}
+
+if (cloudUrlSaveBtn) {
+    cloudUrlSaveBtn.addEventListener('click', () => {
+        let val = (cloudUrlInput.value || '').trim().replace(/\/+$/, '');
+        if (val && !val.startsWith('http://') && !val.startsWith('https://')) {
             val = 'http://' + val;
         }
-        GATEWAY_URL = val;
-        localStorage.setItem('sic_gateway_url', val);
-        gwUrlInput.value = val;
-        fetchMachineData();
+        CLOUD_GATEWAY_URL = val;
+        localStorage.setItem('sic_cloud_gateway_url', val);
+        if (cloudUrlInput) cloudUrlInput.value = val;
+        if (connectionMode === 'local') {
+            setConnectionMode('auto');
+        } else {
+            activeGatewayUrl = CLOUD_GATEWAY_URL || LOCAL_GATEWAY_URL;
+            activeSource = 'cloud';
+            fetchMachineData();
+        }
     });
+}
+
+if (testPingBtn) {
+    testPingBtn.addEventListener('click', async () => {
+        const target = activeGatewayUrl || LOCAL_GATEWAY_URL;
+        testPingBtn.textContent = '⏳ ...';
+        const start = performance.now();
+        try {
+            const res = await fetch(`${target}/api/health`, {
+                signal: AbortSignal.timeout(3000),
+                headers: { 'Accept': 'application/json' }
+            });
+            const ping = Math.round(performance.now() - start);
+            if (res.ok) {
+                testPingBtn.textContent = `✓ ${ping}ms`;
+                testPingBtn.style.color = '#10b981';
+            } else {
+                testPingBtn.textContent = `✗ HTTP ${res.status}`;
+                testPingBtn.style.color = '#f43f5e';
+            }
+        } catch (err) {
+            testPingBtn.textContent = '✗ Fail';
+            testPingBtn.style.color = '#f43f5e';
+        }
+        setTimeout(() => {
+            testPingBtn.textContent = '⚡ Test';
+            testPingBtn.style.color = '';
+        }, 2500);
+    });
+}
+
+updateModeButtonsUI();
+
+function checkMixedContent(targetUrl) {
+    const banner = document.getElementById('mixed-content-banner');
+    const directLink = document.getElementById('direct-cloud-link');
+    const originCode = document.getElementById('page-origin-code');
+    if (!banner) return;
+
+    const isPageHttps = window.location.protocol === 'https:';
+    const isTargetHttp = targetUrl && targetUrl.startsWith('http://') && !targetUrl.includes('localhost') && !targetUrl.includes('127.0.0.1');
+
+    if (isPageHttps && isTargetHttp) {
+        banner.style.display = 'flex';
+        if (originCode) originCode.textContent = window.location.origin;
+        if (directLink) {
+            directLink.href = targetUrl;
+            directLink.textContent = `🚀 Open Direct Cloud Dashboard: ${targetUrl}`;
+        }
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+function updateGatewayStatusUI(source, statusMsg, endpointUrl, latencyMs) {
+    if (activeEndpointPill) {
+        activeEndpointPill.textContent = endpointUrl || '--';
+        activeEndpointPill.title = `Active Gateway Endpoint: ${endpointUrl || 'None'}`;
+    }
+
+    if (gwLatencyBadge) {
+        if (latencyMs !== null && latencyMs !== undefined) {
+            gwLatencyBadge.textContent = `${latencyMs} ms`;
+            gwLatencyBadge.className = latencyMs < 150 ? 'latency-badge' : (latencyMs < 400 ? 'latency-badge warn' : 'latency-badge offline');
+        } else {
+            gwLatencyBadge.textContent = '-- ms';
+            gwLatencyBadge.className = 'latency-badge offline';
+        }
+    }
+
+    if (gwStatusDot && gwStatusText) {
+        if (source === 'cloud') {
+            gwStatusDot.style.background = '#10b981';
+            gwStatusDot.style.boxShadow = '0 0 10px #10b981';
+            gwStatusText.textContent = 'Cloud Connected (24/7)';
+            gwStatusText.style.color = '#10b981';
+            if (telemetryStatusEl) telemetryStatusEl.textContent = 'Live Cloud Telemetry';
+        } else if (source === 'local') {
+            if (connectionMode === 'auto') {
+                gwStatusDot.style.background = '#f59e0b';
+                gwStatusDot.style.boxShadow = '0 0 10px #f59e0b';
+                gwStatusText.textContent = 'Local Fallback (Cloud Offline)';
+                gwStatusText.style.color = '#fbbf24';
+                if (telemetryStatusEl) telemetryStatusEl.textContent = 'Local Telemetry (Fallback)';
+            } else {
+                gwStatusDot.style.background = '#06b6d4';
+                gwStatusDot.style.boxShadow = '0 0 10px #06b6d4';
+                gwStatusText.textContent = 'Localhost (Port 8080)';
+                gwStatusText.style.color = '#38bdf8';
+                if (telemetryStatusEl) telemetryStatusEl.textContent = 'Local Telemetry';
+            }
+        } else {
+            // offline
+            gwStatusDot.style.background = '#f43f5e';
+            gwStatusDot.style.boxShadow = '0 0 8px #f43f5e';
+            gwStatusText.textContent = statusMsg || 'Disconnected (Offline)';
+            gwStatusText.style.color = '#fb7185';
+            if (telemetryStatusEl) telemetryStatusEl.textContent = 'Gateway Offline';
+        }
+    }
+
+    checkMixedContent(endpointUrl);
 }
 
 // --- Dashboard Card Initialization ---
@@ -278,30 +447,124 @@ function updateDashboard(payload) {
     }
 }
 
-// --- Fetch Telemetry Loop ---
-async function fetchMachineData() {
+// --- Smart Auto-Failover Telemetry & Probe Engine ---
+async function probeCloudServer() {
+    if (!CLOUD_GATEWAY_URL) return false;
     try {
-        const response = await fetch(`${GATEWAY_URL}/api/status`, {
-            method: 'GET',
+        const res = await fetch(`${CLOUD_GATEWAY_URL}/api/health`, {
+            signal: AbortSignal.timeout(2500),
             headers: { 'Accept': 'application/json' }
         });
-        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        const data = await response.json();
-        updateDashboard(data);
-    } catch (error) {
-        if (telemetryStatusEl) telemetryStatusEl.textContent = 'Gateway Offline';
-        if (gwStatusDot) {
-            gwStatusDot.style.background = '#f43f5e';
-            gwStatusDot.style.boxShadow = '0 0 8px #f43f5e';
-        }
-        if (gwStatusText) {
-            gwStatusText.textContent = 'Disconnected';
-            gwStatusText.style.color = '#fb7185';
-        }
+        return res.ok;
+    } catch {
+        return false;
     }
 }
 
-// --- Command Dispatch via Gateway TCP REST API ---
+async function fetchFromEndpoint(url, timeoutMs = 3000) {
+    const res = await fetch(`${url}/api/status`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+}
+
+// --- Fetch Telemetry Loop with 24/7 Cloud Resilience ---
+async function fetchMachineData() {
+    if (isFetching) return;
+    isFetching = true;
+
+    try {
+        if (connectionMode === 'cloud') {
+            // Mode: Cloud Only
+            if (!CLOUD_GATEWAY_URL) {
+                updateGatewayStatusUI('offline', 'Configure Cloud Server URL Above', null, null);
+                return;
+            }
+            const start = performance.now();
+            try {
+                const data = await fetchFromEndpoint(CLOUD_GATEWAY_URL, 3500);
+                const latency = Math.round(performance.now() - start);
+                activeGatewayUrl = CLOUD_GATEWAY_URL;
+                activeSource = 'cloud';
+                updateGatewayStatusUI('cloud', 'Cloud Connected (24/7)', CLOUD_GATEWAY_URL, latency);
+                updateDashboard(data);
+            } catch (err) {
+                activeSource = 'offline';
+                updateGatewayStatusUI('offline', 'Cloud Server Offline / Unreachable', CLOUD_GATEWAY_URL, null);
+            }
+
+        } else if (connectionMode === 'local') {
+            // Mode: Local Only
+            const start = performance.now();
+            try {
+                const data = await fetchFromEndpoint(LOCAL_GATEWAY_URL, 2000);
+                const latency = Math.round(performance.now() - start);
+                activeGatewayUrl = LOCAL_GATEWAY_URL;
+                activeSource = 'local';
+                updateGatewayStatusUI('local', 'Localhost Connected', LOCAL_GATEWAY_URL, latency);
+                updateDashboard(data);
+            } catch (err) {
+                activeSource = 'offline';
+                updateGatewayStatusUI('offline', 'Local Gateway Offline (Port 8080)', LOCAL_GATEWAY_URL, null);
+            }
+
+        } else {
+            // Mode: Auto (Cloud first with automatic Localhost Fallback)
+            const now = Date.now();
+
+            // When in local fallback mode, probe cloud in background every 10 seconds
+            if (activeSource === 'local' && CLOUD_GATEWAY_URL && (now - lastCloudProbeTime > 10000)) {
+                lastCloudProbeTime = now;
+                const cloudIsAlive = await probeCloudServer();
+                if (cloudIsAlive) {
+                    console.log('[Auto-Failover] Cloud Server restored! Resuming Cloud stream...');
+                    activeSource = 'cloud';
+                }
+            }
+
+            // Attempt Cloud Server if activeSource is 'cloud' or on startup
+            if (activeSource !== 'local' && CLOUD_GATEWAY_URL) {
+                const start = performance.now();
+                try {
+                    const data = await fetchFromEndpoint(CLOUD_GATEWAY_URL, 2500);
+                    const latency = Math.round(performance.now() - start);
+                    activeGatewayUrl = CLOUD_GATEWAY_URL;
+                    activeSource = 'cloud';
+                    updateGatewayStatusUI('cloud', 'Cloud Connected (24/7)', CLOUD_GATEWAY_URL, latency);
+                    updateDashboard(data);
+                    return;
+                } catch (cloudErr) {
+                    console.warn('[Auto-Failover] Cloud Server unavailable. Falling back to Localhost...');
+                    activeSource = 'local';
+                    lastCloudProbeTime = Date.now();
+                }
+            }
+
+            // Fallback: Fetch from Localhost Gateway
+            const localStart = performance.now();
+            try {
+                const data = await fetchFromEndpoint(LOCAL_GATEWAY_URL, 2000);
+                const latency = Math.round(performance.now() - localStart);
+                activeGatewayUrl = LOCAL_GATEWAY_URL;
+                activeSource = 'local';
+                const statusMsg = CLOUD_GATEWAY_URL ? 'Local Fallback (Cloud Offline)' : 'Localhost Active';
+                updateGatewayStatusUI('local', statusMsg, LOCAL_GATEWAY_URL, latency);
+                updateDashboard(data);
+            } catch (localErr) {
+                activeSource = 'offline';
+                const msg = CLOUD_GATEWAY_URL ? 'Both Cloud & Local Offline' : 'Local Gateway Offline (Port 8080)';
+                updateGatewayStatusUI('offline', msg, null, null);
+            }
+        }
+    } finally {
+        isFetching = false;
+    }
+}
+
+// --- Command Dispatch via Active Gateway REST API ---
 async function sendCommand(machineId, command, value = null) {
     const statusElement = document.getElementById(`status-m${machineId}`);
     const valveEl = document.getElementById(`valve-m${machineId}`);
@@ -352,13 +615,15 @@ async function sendCommand(machineId, command, value = null) {
         }
     }
 
+    const targetUrl = activeGatewayUrl || LOCAL_GATEWAY_URL;
     try {
-        const response = await fetch(`${GATEWAY_URL}/api/command`, {
+        const response = await fetch(`${targetUrl}/api/command`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
+            signal: AbortSignal.timeout(4000),
             body: JSON.stringify({
                 machine_id: machineId,
                 command: command,
@@ -366,10 +631,10 @@ async function sendCommand(machineId, command, value = null) {
             })
         });
         const result = await response.json();
-        console.log(`[Command ${command}] Machine ${machineId}:`, result);
-        setTimeout(fetchMachineData, 400);
+        console.log(`[Command ${command}] Machine ${machineId} (${targetUrl}):`, result);
+        setTimeout(fetchMachineData, 300);
     } catch (err) {
-        console.error('Error sending command:', err);
+        console.error(`Error sending command to ${targetUrl}:`, err);
     }
 }
 
@@ -386,10 +651,12 @@ function setMachineSpeed(machineId, speed) {
 
 // --- Blynk Active Machine Selection ---
 async function selectBlynkMachine(machineId) {
+    const targetUrl = activeGatewayUrl || LOCAL_GATEWAY_URL;
     try {
-        const response = await fetch(`${GATEWAY_URL}/api/blynk/select`, {
+        const response = await fetch(`${targetUrl}/api/blynk/select`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(4000),
             body: JSON.stringify({ machine_id: machineId })
         });
         const res = await response.json();
@@ -397,21 +664,23 @@ async function selectBlynkMachine(machineId) {
             fetchMachineData();
         }
     } catch (err) {
-        console.error('Error selecting Blynk machine:', err);
+        console.error(`Error selecting Blynk machine on ${targetUrl}:`, err);
     }
 }
 
 // --- Fault Simulation Trigger (Testing UDP Alerts) ---
 async function simulateFault(machineId, faultType) {
+    const targetUrl = activeGatewayUrl || LOCAL_GATEWAY_URL;
     try {
-        await fetch(`${GATEWAY_URL}/api/simulate/fault`, {
+        await fetch(`${targetUrl}/api/simulate/fault`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(4000),
             body: JSON.stringify({ machine_id: machineId, fault: faultType })
         });
-        setTimeout(fetchMachineData, 400);
+        setTimeout(fetchMachineData, 300);
     } catch (err) {
-        console.error('Error simulating fault:', err);
+        console.error(`Error simulating fault on ${targetUrl}:`, err);
     }
 }
 
@@ -423,4 +692,4 @@ window.simulateFault = simulateFault;
 
 initDashboard();
 fetchMachineData();
-setInterval(fetchMachineData, 1500);
+setInterval(fetchMachineData, 1800);
